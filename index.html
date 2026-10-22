@@ -493,8 +493,8 @@ function postJson(payload){
 async function saveRecordConfirmed(rec){
   const baseRev = rec.rev||0;
   postJson({ action:'save', token:state.token, record:rec });
-  for(let i=0;i<22;i++){
-    await sleep(i===0?1500:1600);
+  for(let i=0;i<30;i++){
+    await sleep(i===0?800:1000);
     try{
       const d = await api('detail',{raw:{id:rec.id}});
       if(d.record && d.record.rev > baseRev) return normalizeRecord(d.record);
@@ -536,6 +536,7 @@ function upsertLocal(rec){
   const slim = Object.assign({},rec); delete slim.history; delete slim.followUps;
   const i = state.db.findIndex(r=>r.id===rec.id);
   if(i>=0) state.db[i]=slim; else state.db.push(slim);
+  state.db = state.db.slice();   // new array identity so cached derived lists refresh
   state.detail[rec.id] = rec;
 }
 async function fetchDetail(id){
@@ -670,7 +671,8 @@ function renderLogin(){
   <p id="loginError" class="err" style="display:none;"></p>
   <button type="submit" class="btn" style="margin-top:14px;width:100%;">${B.loginBtn}</button></form></div>`;
 }
-function careOverdueList(){ return state.db.filter(isCareOverdue); }
+let _coKey=null,_coVal=null;
+function careOverdueList(){ const k=state.db; const day=new Date().toDateString()+state.weeklyCareDays; if(_coKey===k&&_coVal&&_coVal.day===day) return _coVal.list; const list=k.filter(isCareOverdue); _coKey=k; _coVal={day,list}; return list; }
 function careBannerHTML(){
   if(!canEditAny()) return '';
   const n = careOverdueList().length; if(!n) return '';
@@ -1064,7 +1066,7 @@ function renderTools(){
     <div class="field"><label class="chk"><input type="checkbox" name="active" checked> ${B.activeLbl}</label></div></div>
     <div class="row" style="margin-top:8px;"><button type="submit" class="btn">${B.userSave}</button></div></form></div>
   <div class="card"><div class="section-head"><h2>🔑 ${B.toolsLog}</h2></div>${a.log?`<div class="table-scroll"><table><thead><tr><th>When 时间</th><th>User 用户</th><th>${B.roleLbl}</th><th>Result 结果</th><th>Note</th></tr></thead><tbody>${a.log.map(x=>`<tr><td style="white-space:nowrap;">${fmtDT(x.t)}</td><td>${esc(x.user)}</td><td>${esc(x.role)}</td><td>${x.result==='OK'?'✅ OK':'<span class="badge-danger">'+esc(x.result)+'</span>'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Loading… 载入中…</p>'}</div>
-  <div class="card"><div class="section-head"><h2>🗄 ${B.toolsArchive}</h2></div>${a.archive?(a.archive.length?`<div class="table-scroll"><table><thead><tr><th>Deleted 删除时间</th><th>By 操作人</th><th>${B.colName}</th><th>${B.colContact}</th><th>From 来自</th><th></th></tr></thead><tbody>${a.archive.map(x=>`<tr><td>${fmtDT(x.t)}</td><td>${esc(x.by)}</td><td>${esc(x.name)}</td><td>${esc(x.contact)}</td><td>${esc(x.tab)}</td><td><button class="btn secondary sm" data-act="archive-restore" data-id="${esc(x.id)}">${B.restoreBtn}</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">No deleted profiles. 暂无已删除资料。</p>'):'<p class="muted">Loading… 载入中…</p>'}</div>
+  <div class="card"><div class="section-head"><h2>🗄 ${B.toolsArchive}</h2></div>${a.archive?(a.archive.length?`<input type="search" id="archSearch" placeholder="Search name, contact, who deleted… 搜索姓名、联络、操作人…" oninput="(function(q){q=q.toLowerCase().trim();var n=0;document.querySelectorAll('#archBody tr').forEach(function(tr){var m=!q||tr.textContent.toLowerCase().indexOf(q)>-1;tr.style.display=m?'':'none';if(m)n++;});document.getElementById('archNone').style.display=n?'none':'';})(this.value)" style="width:100%;max-width:420px;margin:0 0 10px"><div class="table-scroll"><table><thead><tr><th>Deleted 删除时间</th><th>By 操作人</th><th>${B.colName}</th><th>${B.colContact}</th><th>From 来自</th><th></th></tr></thead><tbody id="archBody">${a.archive.map(x=>`<tr><td>${fmtDT(x.t)}</td><td>${esc(x.by)}</td><td>${esc(x.name)}</td><td>${esc(x.contact)}</td><td>${esc(x.tab)}</td><td><button class="btn secondary sm" data-act="archive-restore" data-id="${esc(x.id)}">${B.restoreBtn}</button></td></tr>`).join('')}</tbody></table></div><p id="archNone" class="muted" style="display:none">No matches. 没有符合的资料。</p>`:'<p class="muted">No deleted profiles. 暂无已删除资料。</p>'):'<p class="muted">Loading… 载入中…</p>'}</div>
   ${sup?`<div class="card"><div class="section-head"><h2>💾 ${B.toolsBackup}</h2></div><p class="hint">A copy of the whole Google Sheet is also made automatically every night (last 14 kept) in your Drive folder “TOW DB Backups”.<br>系统每晚也会自动备份整份谷歌表单（保留最近14份）于云端硬盘「TOW DB Backups」文件夹。</p>
    <div class="row"><button class="btn" data-act="backup-now">${B.backupNow}</button><button class="btn secondary" data-act="backup-download">${B.backupSnap}</button></div>
    <div style="margin-top:12px;">${a.backups?(a.backups.length?`<table><thead><tr><th>Backup 备份</th><th>Created 创建时间</th></tr></thead><tbody>${a.backups.map(b=>`<tr><td><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.name)}</a></td><td>${fmtDT(b.t)}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No backups yet. 暂无备份。</p>'):'<p class="muted">Loading… 载入中…</p>'}</div></div>
